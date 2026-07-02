@@ -22,6 +22,7 @@ from scipy import stats
 from sklearn.ensemble import IsolationForest
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.models import LoginEvent, UserHistory
@@ -35,30 +36,32 @@ from src.features import (
 
 logging.basicConfig(level=logging.WARNING)
 
-DATA_DIR   = Path(__file__).parent.parent / "data"
-TS_FMT     = "%Y-%m-%dT%H:%M:%S"
+DATA_DIR = Path(__file__).parent.parent / "data"
+TS_FMT = "%Y-%m-%dT%H:%M:%S"
 TRAIN_DAYS = 20
 START_DATE = datetime(2026, 5, 1)
 
-N_ESTIMATORS  = 200
+N_ESTIMATORS = 200
 CONTAMINATION = 0.002
-RANDOM_STATE  = 42
+RANDOM_STATE = 42
 
 
 def load_events(path: Path) -> List[LoginEvent]:
     events: List[LoginEvent] = []
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
-            events.append(LoginEvent(
-                event_id  = row["event_id"],
-                user_id   = row["user_id"],
-                ts        = datetime.strptime(row["ts"], TS_FMT),
-                device_id = row["device_id"],
-                country   = row["country"],
-                lat       = float(row["lat"]),
-                lon       = float(row["lon"]),
-                success   = row["success"].lower() == "true",
-            ))
+            events.append(
+                LoginEvent(
+                    event_id=row["event_id"],
+                    user_id=row["user_id"],
+                    ts=datetime.strptime(row["ts"], TS_FMT),
+                    device_id=row["device_id"],
+                    country=row["country"],
+                    lat=float(row["lat"]),
+                    lon=float(row["lon"]),
+                    success=row["success"].lower() == "true",
+                )
+            )
     return events
 
 
@@ -98,11 +101,11 @@ def extract_row(
 
     prev = prior[-1]
 
-    vel   = geo_velocity_kmh(prev, event)
-    nov   = device_novelty(history, event)
-    hdev  = hour_deviation(history, event)
+    vel = geo_velocity_kmh(prev, event)
+    nov = device_novelty(history, event)
+    hdev = hour_deviation(history, event)
     inter = nov * hdev
-    conj  = novel_device_and_unusual_hour(history, event)
+    conj = novel_device_and_unusual_hour(history, event)
     burst = burst_rate(event, all_events)
 
     return [vel, nov, hdev, inter, conj, burst]
@@ -113,7 +116,9 @@ def train(
     labels: Dict[str, str],
     all_events: List[LoginEvent],
     histories: Dict[str, UserHistory],
-) -> Tuple[IsolationForest, float, np.ndarray, List[str], np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[
+    IsolationForest, float, np.ndarray, List[str], np.ndarray, np.ndarray, np.ndarray
+]:
     train_cutoff = START_DATE + timedelta(days=TRAIN_DAYS)
 
     X_train, X_all, eids = [], [], []
@@ -127,7 +132,7 @@ def train(
             X_train.append(row)
 
     X_train_arr = np.array(X_train)
-    X_all_arr   = np.array(X_all)
+    X_all_arr = np.array(X_all)
 
     # Standardize features based on training-window clean events
     mu = np.mean(X_train_arr, axis=0)
@@ -178,7 +183,7 @@ def baseline_alerts(
 
     if not train_vels:
         return {}
-    mu    = float(np.mean(train_vels))
+    mu = float(np.mean(train_vels))
     sigma = float(np.std(train_vels)) or 1.0
 
     vels, eids = [], []
@@ -192,7 +197,9 @@ def baseline_alerts(
         vels.append(geo_velocity_kmh(prior[-1], event))
         eids.append(event.event_id)
 
-    return {eid: bool(abs(vels[i] - mu) / sigma > z_threshold) for i, eid in enumerate(eids)}
+    return {
+        eid: bool(abs(vels[i] - mu) / sigma > z_threshold) for i, eid in enumerate(eids)
+    }
 
 
 def _prf(tp: int, fp: int, fn: int) -> Tuple[float, float, float]:
@@ -215,15 +222,21 @@ def print_report(
     print("  Login Anomaly Detector — Evaluation Report")
     print("=" * 65)
 
-    print(f"\n{'Attack':<30} {'P':>6} {'R':>6} {'F1':>6}   {'TP':>4} {'FP':>4} {'FN':>4}")
+    print(
+        f"\n{'Attack':<30} {'P':>6} {'R':>6} {'F1':>6}   {'TP':>4} {'FP':>4} {'FN':>4}"
+    )
     print("-" * 65)
 
     total_alerts = sum(1 for a in if_alerts.values() if a)
 
     for attack in attack_types:
         attack_eids = {eid for eid, t in labels.items() if t == attack}
-        tp = sum(1 for eid in scored_eids if eid in attack_eids and if_alerts.get(eid, False))
-        fp = sum(1 for eid in scored_eids if eid not in labels and if_alerts.get(eid, False))
+        tp = sum(
+            1 for eid in scored_eids if eid in attack_eids and if_alerts.get(eid, False)
+        )
+        fp = sum(
+            1 for eid in scored_eids if eid not in labels and if_alerts.get(eid, False)
+        )
         fn = sum(1 for eid in attack_eids if not if_alerts.get(eid, False))
         p, r, f = _prf(tp, fp, fn)
         print(f"  {attack:<28} {p:>5.0%} {r:>6.0%} {f:>6.0%}   {tp:>4} {fp:>4} {fn:>4}")
@@ -231,29 +244,41 @@ def print_report(
     total_scored = len(scored_eids)
     total_labeled = len(labels)
     total_normal = total_scored - total_labeled
-    total_fp = sum(1 for eid in scored_eids if eid not in labels and if_alerts.get(eid, False))
+    total_fp = sum(
+        1 for eid in scored_eids if eid not in labels and if_alerts.get(eid, False)
+    )
     total_tp = total_alerts - total_fp
     alerts_per_10k = total_alerts / total_scored * 10_000
     attack_prevalence_per_10k = total_labeled / total_scored * 10_000
     fp_rate_of_normal = total_fp / total_normal * 10_000 if total_normal else 0.0
     overall_precision = total_tp / total_alerts if total_alerts else 0.0
     print(f"\n  Total events scored : {total_scored:,}")
-    print(f"  Total alerts        : {total_alerts:,}  (tp={total_tp:,}  fp={total_fp:,})")
+    print(
+        f"  Total alerts        : {total_alerts:,}  (tp={total_tp:,}  fp={total_fp:,})"
+    )
     print(f"  Overall precision   : {overall_precision:.0%}")
     print(f"  Alerts per 10k      : {alerts_per_10k:.1f}")
-    print(f"  Attack prevalence   : {attack_prevalence_per_10k:.1f}/10k"
-          f"  (contamination={CONTAMINATION} assumes only {CONTAMINATION*10_000:.0f}/10k --"
-          f" real prevalence here is ~{attack_prevalence_per_10k/max(CONTAMINATION*10_000,1e-9):.0f}x that)")
-    print(f"  False-alert rate    : {fp_rate_of_normal:.1f}/10k normal events"
-          f"  ({total_fp:,} noisy alerts out of {total_normal:,} legitimate logins)")
+    print(
+        f"  Attack prevalence   : {attack_prevalence_per_10k:.1f}/10k"
+        f"  (contamination={CONTAMINATION} assumes only {CONTAMINATION * 10_000:.0f}/10k --"
+        f" real prevalence here is ~{attack_prevalence_per_10k / max(CONTAMINATION * 10_000, 1e-9):.0f}x that)"
+    )
+    print(
+        f"  False-alert rate    : {fp_rate_of_normal:.1f}/10k normal events"
+        f"  ({total_fp:,} noisy alerts out of {total_normal:,} legitimate logins)"
+    )
 
     print(f"\n{'Baseline (geo_velocity z-score)':<30} {'P':>6} {'R':>6} {'F1':>6}")
     print("-" * 50)
     for attack in attack_types:
         attack_eids = {eid for eid, t in labels.items() if t == attack}
         b_scored = set(baseline.keys())
-        tp = sum(1 for eid in b_scored if eid in attack_eids and baseline.get(eid, False))
-        fp = sum(1 for eid in b_scored if eid not in labels and baseline.get(eid, False))
+        tp = sum(
+            1 for eid in b_scored if eid in attack_eids and baseline.get(eid, False)
+        )
+        fp = sum(
+            1 for eid in b_scored if eid not in labels and baseline.get(eid, False)
+        )
         fn = sum(1 for eid in attack_eids if not baseline.get(eid, False))
         p, r, f = _prf(tp, fp, fn)
         print(f"  {attack:<28} {p:>5.0%} {r:>6.0%} {f:>6.0%}")
@@ -274,7 +299,9 @@ if __name__ == "__main__":
     histories = build_histories(events)
 
     print("Training IsolationForest on normal events (days 0-19)...")
-    detector, threshold, X_all_std, scored_eids, mu, sigma, conj_raw = train(events, labels, events, histories)
+    detector, threshold, X_all_std, scored_eids, mu, sigma, conj_raw = train(
+        events, labels, events, histories
+    )
     print(f"  Alert threshold: {threshold:.4f}")
 
     print("Scoring all events...")
@@ -294,7 +321,12 @@ if __name__ == "__main__":
 
     print_report(events, labels, scored_eids, if_alerts, baseline)
 
-    model_payload = {"detector": detector, "threshold": threshold, "mu": mu, "sigma": sigma}
+    model_payload = {
+        "detector": detector,
+        "threshold": threshold,
+        "mu": mu,
+        "sigma": sigma,
+    }
     with open(DATA_DIR / "model.pkl", "wb") as f:
         pickle.dump(model_payload, f)
-    print(f"Model saved -> {DATA_DIR / 'model.pkl'}")
+    print("Model saved -> 'model.pkl'")
