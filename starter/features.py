@@ -25,9 +25,12 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance between two lat/lon points (km)."""
     R = 6_371.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi    = math.radians(lat2 - lat1)
+    dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
     return 2 * R * math.asin(math.sqrt(a))
 
 
@@ -38,18 +41,15 @@ def burst_rate(
 ) -> float:
     """Number of distinct user accounts with login activity in the last window_minutes."""
     window_start = event.ts - timedelta(minutes=window_minutes)
-    active_users = {
-        e.user_id
-        for e in all_events
-        if window_start <= e.ts < event.ts
-    }
+    active_users = {e.user_id for e in all_events if window_start <= e.ts < event.ts}
     return float(len(active_users))
 
 
 def geo_velocity_kmh(prev_login: LoginEvent, curr_login: LoginEvent) -> float:
     """Speed (km/h) required to travel between two consecutive login locations."""
-    distance_km = haversine(prev_login.lat, prev_login.lon,
-                            curr_login.lat, curr_login.lon)
+    distance_km = haversine(
+        prev_login.lat, prev_login.lon, curr_login.lat, curr_login.lon
+    )
     hours = (curr_login.ts - prev_login.ts).total_seconds() / 3600
     return distance_km / max(hours, 1e-6)
 
@@ -79,7 +79,9 @@ def hour_deviation(user_history: UserHistory, curr_login: LoginEvent) -> float:
     Returns a unitless normalized deviation (higher => more unusual for the user).
     """
     median_hour = user_history.median_login_hour(curr_login.ts)
-    diff = _circular_distance_hours(curr_login.ts.hour + curr_login.ts.minute / 60.0, median_hour)
+    diff = _circular_distance_hours(
+        curr_login.ts.hour + curr_login.ts.minute / 60.0, median_hour
+    )
 
     user_std = user_history.login_hour_std(curr_login.ts)
     min_std = 0.5
@@ -89,7 +91,9 @@ def hour_deviation(user_history: UserHistory, curr_login: LoginEvent) -> float:
     return diff / std
 
 
-def novel_device_and_unusual_hour(user_history: UserHistory, curr_login: LoginEvent, k: float = 2.0) -> float:
+def novel_device_and_unusual_hour(
+    user_history: UserHistory, curr_login: LoginEvent, k: float = 2.0
+) -> float:
     """Binary feature: 1.0 if device is novel AND hour_deviation > k, else 0.0.
 
     `k` is the normalized-hour threshold (z-score-like). This engineered
